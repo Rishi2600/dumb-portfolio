@@ -3,3 +3,7 @@ dist
 .DS_Store
 *.local
 .env
+
+# claude code
+CLAUDE.md
+.claude/
