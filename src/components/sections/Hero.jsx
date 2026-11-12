@@ -1,17 +1,16 @@
 import { ArrowUpRight } from "lucide-react";
 import Reveal from "../ui/Reveal";
+import GlassScene from "../three/GlassScene";
 import { useMagnetic } from "../../hooks/useMagnetic";
 
-export default function Hero() {
+export default function Hero({ isDark }) {
   const workBtn = useMagnetic();
   const contactBtn = useMagnetic();
 
   return (
     <section id="top" className="relative min-h-[100svh] flex items-end overflow-hidden">
-      {/* Drag here to tilt the glass scene (see SceneBackground). The text
-          lets pointer events through to it; only the buttons catch them. */}
-      <div id="glass-drag" className="glass-drag absolute inset-0" />
-      <div className="relative max-w-6xl mx-auto px-6 md:px-10 pb-24 pt-40 w-full pointer-events-none">
+      <GlassScene isDark={isDark} />
+      <div className="relative max-w-6xl mx-auto px-6 md:px-10 pb-24 pt-40 w-full">
         <Reveal className="font-mono text-xs uppercase tracking-[0.25em] mb-6" style={{ color: "var(--clay)" }}>
           Full-stack developer — {new Date().getFullYear()}
         </Reveal>
@@ -25,7 +24,7 @@ export default function Hero() {
             <br />I build full products — from the schema to the last pixel.
           </h1>
         </Reveal>
-        <Reveal delay={2} className="mt-10 flex flex-wrap gap-4 pointer-events-auto">
+        <Reveal delay={2} className="mt-10 flex flex-wrap gap-4">
           <a
             ref={workBtn.ref}
             onMouseMove={workBtn.onMouseMove}

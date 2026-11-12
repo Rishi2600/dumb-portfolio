@@ -1,0 +1,578 @@
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
+import { glassVertex, glassFragment } from "./glassShader";
+
+/**
+ * The hero's backdrop: a pane of hammered, wired glass with a plant
+ * climbing behind it, filling whatever element it's placed in.
+ *
+ * Two passes per frame. The plant (leaves, stems, sky, sun) renders to an
+ * off-screen texture along with its depth. Then the pane — a single plane
+ * with the shader in glassShader.js — reads that texture and frosts it by
+ * depth, so leaves near the glass stay crisp and far ones melt away.
+ *
+ * It follows the cursor: the camera leans toward it, so the pebbles, the
+ * wire and the plant slide against each other, and a light travels with
+ * it, glinting off the pebbles and brightening the leaves behind.
+ */
+
+const GLASS_W = 30;
+const GLASS_H = 20;
+const CAMERA_DISTANCE = 6;
+const FOV = 40;
+
+export default function GlassScene({ isDark = false }) {
+  const mountRef = useRef(null);
+  const isDarkRef = useRef(isDark);
+
+  useEffect(() => {
+    isDarkRef.current = isDark;
+  }, [isDark]);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const prefersReduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    mount.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 40);
+
+    // ------------------------------------------------------------------
+    // Pass 1: everything behind the glass
+    // ------------------------------------------------------------------
+    const plant = new THREE.Scene();
+    // far leaves sink into the shade — a second depth cue under the frost
+    plant.fog = new THREE.Fog(0x22351a, 7, 15);
+
+    const hemi = new THREE.HemisphereLight(0xf2f7e6, 0x2a3a1c, 1);
+    plant.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xfff0d2, 1);
+    sun.position.set(-6, 9, 7);
+    sun.target.position.set(2, 0, -2);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.left = -11;
+    sun.shadow.camera.right = 11;
+    sun.shadow.camera.top = 9;
+    sun.shadow.camera.bottom = -9;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 30;
+    sun.shadow.bias = -0.0015;
+    sun.shadow.normalBias = 0.04;
+    plant.add(sun, sun.target);
+
+    // travels with the cursor, just in front of the pane
+    const cursorLight = new THREE.PointLight(0xfff4e0, 1, 9, 2);
+    plant.add(cursorLight);
+
+    const backdropTex = makeBackdropTexture();
+    const backdrop = new THREE.Mesh(
+      new THREE.PlaneGeometry(44, 28),
+      new THREE.MeshBasicMaterial({ map: backdropTex, fog: false }),
+    );
+    backdrop.position.z = -7;
+    plant.add(backdrop);
+
+    // the sun (or moon) low behind the leaves; over-bright, so the frost
+    // spreads it into a glare with the leaves silhouetted against it
+    const glowTex = makeRadialTexture(128, [
+      [0, "rgba(255,255,255,1)"],
+      [0.25, "rgba(255,255,255,0.7)"],
+      [0.6, "rgba(255,255,255,0.15)"],
+      [1, "rgba(255,255,255,0)"],
+    ]);
+    const sunGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTex,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      }),
+    );
+    sunGlow.position.set(-0.3, 1.2, -6.8);
+    plant.add(sunGlow);
+
+    const { leafData, vines } = makePlantLayout();
+
+    const stemMat = new THREE.MeshStandardMaterial({
+      color: 0x46562a,
+      roughness: 0.8,
+    });
+    vines.forEach((points) => {
+      const stem = new THREE.Mesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(points),
+          points.length * 3,
+          0.02,
+          5,
+        ),
+        stemMat,
+      );
+      stem.castShadow = true;
+      plant.add(stem);
+    });
+
+    const leafTex = makeLeafTexture();
+    const leaves = new THREE.InstancedMesh(
+      makeLeafGeometry(),
+      new THREE.MeshStandardMaterial({
+        map: leafTex,
+        side: THREE.DoubleSide,
+        roughness: 0.6,
+      }),
+      leafData.length,
+    );
+    leafData.forEach((leaf, i) => leaves.setColorAt(i, leaf.color));
+    leaves.castShadow = true;
+    leaves.receiveShadow = true;
+    leaves.frustumCulled = false; // instances move; skip the stale bounds
+    plant.add(leaves);
+
+    const target = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType, // keeps the over-bright sun for the frost
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
+      depthTexture: new THREE.DepthTexture(1, 1),
+    });
+
+    // ------------------------------------------------------------------
+    // Pass 2: the pane
+    // ------------------------------------------------------------------
+    const front = new THREE.Scene();
+    const bumpTex = makeHammeredNormalMap(512);
+    const uniforms = {
+      tScene: { value: target.texture },
+      tDepth: { value: target.depthTexture },
+      tBump: { value: bumpTex },
+      uResolution: { value: new THREE.Vector2(1, 1) },
+      uBumpRepeat: { value: new THREE.Vector2(GLASS_W / 2.4, GLASS_H / 2.4) },
+      uNear: { value: camera.near },
+      uFar: { value: camera.far },
+      uTanHalfFov: { value: Math.tan(THREE.MathUtils.degToRad(FOV / 2)) },
+      uScatter: { value: 0.09 },
+      uFrostTint: { value: new THREE.Color() },
+      uLightPos: { value: new THREE.Vector3(0, 0, 1.4) },
+      uLightColor: { value: new THREE.Color() },
+      uSunDir: {
+        value: sun.position.clone().sub(sun.target.position).normalize(),
+      },
+      uSunColor: { value: new THREE.Color() },
+      uSkyColor: { value: new THREE.Color() },
+      uWireColor: { value: new THREE.Color() },
+    };
+    const glass = new THREE.Mesh(
+      new THREE.PlaneGeometry(GLASS_W, GLASS_H),
+      new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: glassVertex,
+        fragmentShader: glassFragment,
+      }),
+    );
+    front.add(glass);
+
+    // ------------------------------------------------------------------
+    // Sizing, visibility, pointer
+    // ------------------------------------------------------------------
+    const bufferSize = new THREE.Vector2();
+    const resize = () => {
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.getDrawingBufferSize(bufferSize);
+      target.setSize(bufferSize.x, bufferSize.y);
+      uniforms.uResolution.value.copy(bufferSize);
+    };
+    resize();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(mount);
+
+    // don't burn the GPU once the hero has scrolled away
+    let onScreen = true;
+    const viewObserver = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+    });
+    viewObserver.observe(mount);
+
+    const pointer = { x: 0, y: 0 }; // -1..1 across the hero
+    const onPointerMove = (e) => {
+      const rect = mount.getBoundingClientRect();
+      pointer.x = clampUnit(((e.clientX - rect.left) / rect.width) * 2 - 1);
+      pointer.y = clampUnit(1 - ((e.clientY - rect.top) / rect.height) * 2);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+
+    // ------------------------------------------------------------------
+    // Day / night: `night` eases toward 0 or 1 and every themed value
+    // lerps on it, so toggling the theme fades rather than snaps.
+    // ------------------------------------------------------------------
+    const pair = (day, dark) => ({
+      day: new THREE.Color().setRGB(...day),
+      dark: new THREE.Color().setRGB(...dark),
+    });
+    const THEME = {
+      backdrop: pair([0.95, 0.95, 0.92], [0.06, 0.09, 0.14]),
+      glow: pair([2.6, 2.4, 2.0], [0.55, 0.7, 1.3]),
+      fog: pair([0.016, 0.036, 0.01], [0.003, 0.008, 0.008]),
+      sun: pair([1, 0.87, 0.64], [0.4, 0.54, 1]),
+      light: pair([1, 0.94, 0.82], [0.6, 0.74, 1]),
+      frost: pair([0.8, 0.84, 0.76], [0.03, 0.045, 0.07]),
+      sky: pair([0.85, 0.92, 1], [0.07, 0.1, 0.18]),
+      wire: pair([0.8, 0.84, 0.78], [0.08, 0.1, 0.13]),
+    };
+    let night = isDarkRef.current ? 1 : 0;
+
+    const look = { x: 0, y: 0 }; // eased camera lean
+    const lightAt = { x: 0, y: 0 }; // eased light position (quicker)
+    const halfH = Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * CAMERA_DISTANCE;
+    const dummy = new THREE.Object3D();
+    const speed = prefersReduced ? 0.15 : 1;
+    let t = 0;
+    let last = performance.now();
+    let frameId;
+
+    const animate = (now) => {
+      frameId = requestAnimationFrame(animate);
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      if (!onScreen) return;
+      t += dt * speed;
+
+      night += ((isDarkRef.current ? 1 : 0) - night) * 0.05;
+      const mix = (day, dark) => day + (dark - day) * night;
+      const themed = (out, key) => out.copy(THEME[key].day).lerp(THEME[key].dark, night);
+
+      themed(backdrop.material.color, "backdrop");
+      themed(sunGlow.material.color, "glow");
+      themed(plant.fog.color, "fog");
+      themed(sun.color, "sun");
+      themed(cursorLight.color, "light");
+      themed(uniforms.uFrostTint.value, "frost");
+      themed(uniforms.uSkyColor.value, "sky");
+      themed(uniforms.uWireColor.value, "wire");
+      themed(uniforms.uLightColor.value, "light");
+      themed(uniforms.uSunColor.value, "sun").multiplyScalar(mix(1, 0.5));
+      hemi.intensity = mix(0.5, 0.15);
+      sun.intensity = mix(2.8, 0.6);
+      cursorLight.intensity = mix(7, 4);
+      sunGlow.scale.setScalar(mix(9, 5));
+
+      // camera leans toward the cursor, with a slow idle drift on top
+      look.x += (pointer.x - look.x) * 0.06;
+      look.y += (pointer.y - look.y) * 0.06;
+      const azimuth = look.x * 0.32 + Math.sin(t * 0.35) * 0.05;
+      const polar = look.y * 0.18 + Math.cos(t * 0.27) * 0.03;
+      camera.position.set(
+        Math.sin(azimuth) * Math.cos(polar) * CAMERA_DISTANCE,
+        Math.sin(polar) * CAMERA_DISTANCE,
+        Math.cos(azimuth) * Math.cos(polar) * CAMERA_DISTANCE,
+      );
+      camera.lookAt(0, 0, 0);
+
+      // the light sits under the cursor, just off the glass
+      lightAt.x += (pointer.x - lightAt.x) * 0.14;
+      lightAt.y += (pointer.y - lightAt.y) * 0.14;
+      uniforms.uLightPos.value.set(
+        lightAt.x * halfH * camera.aspect,
+        lightAt.y * halfH,
+        1.4,
+      );
+      cursorLight.position.copy(uniforms.uLightPos.value);
+
+      // leaves sway in a breeze that gusts now and then
+      const gust = 0.09 + Math.sin(t * 0.5) * 0.05;
+      for (let i = 0; i < leafData.length; i++) {
+        const leaf = leafData[i];
+        const sway =
+          Math.sin(t * leaf.speed + leaf.phase + leaf.x * 0.3) * gust;
+        dummy.position.set(leaf.x, leaf.y, leaf.z);
+        dummy.rotation.set(leaf.rx + sway * 0.6, leaf.ry, leaf.rz + sway);
+        dummy.scale.setScalar(leaf.scale);
+        dummy.updateMatrix();
+        leaves.setMatrixAt(i, dummy.matrix);
+      }
+      leaves.instanceMatrix.needsUpdate = true;
+
+      renderer.setRenderTarget(target);
+      renderer.render(plant, camera);
+      renderer.setRenderTarget(null);
+      renderer.render(front, camera);
+    };
+    frameId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("pointermove", onPointerMove);
+      resizeObserver.disconnect();
+      viewObserver.disconnect();
+
+      [plant, front].forEach((scene) =>
+        scene.traverse((obj) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) obj.material.dispose();
+        }),
+      );
+      [backdropTex, glowTex, leafTex, bumpTex].forEach((tex) => tex.dispose());
+      target.depthTexture.dispose();
+      target.dispose();
+
+      renderer.dispose();
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
+    };
+  }, []);
+
+  return <div ref={mountRef} className="hero-glass" />;
+}
+
+function clampUnit(v) {
+  return Math.min(1, Math.max(-1, v));
+}
+
+function rand(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+/**
+ * Where the plant grows. The main mass climbs from below the frame on the
+ * right, at every depth from just behind the pane to far back. A few thin
+ * vines hang from the top on the left, close to the glass, so that side
+ * stays bright but still has crisp leaves near the surface.
+ *
+ * Returns the leaves and, per vine, the points its stem runs through.
+ */
+function makePlantLayout() {
+  const leafData = [];
+  const vines = [];
+
+  const addVine = ({ x, y, z, rise, steps, drift }) => {
+    const points = [new THREE.Vector3(x, y - rise, z)];
+    const wave = rand(0, Math.PI * 2);
+    for (let s = 0; s < steps; s++) {
+      x += drift + rand(-0.12, 0.12);
+      y += rise * rand(0.22, 0.32);
+      const pz = Math.min(z + Math.sin(s * 0.45 + wave) * 0.22, -0.08);
+      points.push(new THREE.Vector3(x, y, pz));
+
+      const side = s % 2 ? 1 : -1;
+      const yellow = Math.random() < 0.07;
+      leafData.push({
+        x,
+        y,
+        z: pz,
+        rx: rand(-0.7, 0.2),
+        ry: rand(-0.6, 0.6),
+        // rising vines hold leaves up and out; hanging ones let them droop
+        rz: (rise > 0 ? 0 : Math.PI) + side * rand(0.5, 1.3),
+        scale: rand(0.4, 0.72),
+        speed: rand(0.8, 1.7),
+        phase: rand(0, Math.PI * 2),
+        color: new THREE.Color().setHSL(
+          yellow ? rand(0.14, 0.17) : rand(0.24, 0.31),
+          yellow ? 0.6 : rand(0.45, 0.7),
+          yellow ? 0.5 : rand(0.26, 0.42),
+        ),
+      });
+    }
+    vines.push(points);
+  };
+
+  for (let v = 0; v < 20; v++) {
+    addVine({
+      x: rand(1.8, 8.5),
+      y: -5.2,
+      // biased toward the pane, so plenty of leaves are close enough to read
+      z: -(0.1 + Math.pow(Math.random(), 2.4) * 4.7),
+      rise: 1,
+      steps: rand(16, 34),
+      drift: rand(-0.08, 0.04),
+    });
+  }
+  // (kept between the logo and the nav links, and short enough to stop
+  // above the hero text)
+  for (let v = 0; v < 4; v++) {
+    addVine({
+      x: rand(-2.1, -1.4),
+      y: 3,
+      z: -rand(0.1, 0.5),
+      rise: -1,
+      steps: rand(5, 8),
+      drift: rand(-0.04, 0.04),
+    });
+  }
+  return { leafData, vines };
+}
+
+/**
+ * One leaf: a grid pinched into a rounded, pointed outline (widest a third
+ * of the way up from the stem), cupped across the midrib and curled along
+ * its length so light and shadow fall across it.
+ */
+function makeLeafGeometry() {
+  const geo = new THREE.PlaneGeometry(1, 1, 6, 10);
+  geo.translate(0, 0.5, 0); // pivot at the stem end
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const v = pos.getY(i);
+    const width = Math.pow(Math.sin(Math.PI * Math.pow(v, 0.62)), 0.75);
+    const x = pos.getX(i) * width * 0.92;
+    pos.setX(i, x);
+    pos.setZ(i, -x * x * 0.9 - (v - 0.45) * (v - 0.45) * 0.3);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Pale leaf surface with a midrib and side veins; tinted per instance. */
+function makeLeafTexture() {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  const fill = ctx.createLinearGradient(0, 0, size, 0);
+  fill.addColorStop(0, "#b9c4a6");
+  fill.addColorStop(0.5, "#f4f7ea");
+  fill.addColorStop(1, "#b9c4a6");
+  ctx.fillStyle = fill;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineCap = "round";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(size / 2, size);
+  ctx.lineTo(size / 2, 0);
+  ctx.stroke();
+  ctx.lineWidth = 2.5;
+  for (let y = size - 24; y > 30; y -= 30) {
+    ctx.beginPath();
+    ctx.moveTo(size / 2, y);
+    ctx.quadraticCurveTo(size * 0.3, y - 22, 4, y - 58);
+    ctx.moveTo(size / 2, y);
+    ctx.quadraticCurveTo(size * 0.7, y - 22, size - 4, y - 58);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** A radial-gradient canvas texture; `stops` are [offset, css color]. */
+function makeRadialTexture(size, stops) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const r = size / 2;
+  const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
+  stops.forEach(([offset, color]) => grad.addColorStop(offset, color));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * The world behind the plant. The plane is far wider than the view, so
+ * the middle of the texture is what the camera sees: bright sky left of
+ * centre, fading into deep foliage shade on the right and at the bottom.
+ */
+function makeBackdropTexture() {
+  const w = 512;
+  const h = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+
+  const across = ctx.createLinearGradient(0, 0, w, 0);
+  across.addColorStop(0, "#e4e8db");
+  across.addColorStop(0.42, "#d9e0cc");
+  across.addColorStop(0.5, "#a9bb8e");
+  across.addColorStop(0.58, "#3f5a2a");
+  across.addColorStop(0.7, "#182a0f");
+  across.addColorStop(1, "#0c1707");
+  ctx.fillStyle = across;
+  ctx.fillRect(0, 0, w, h);
+
+  const ground = ctx.createLinearGradient(0, 0, 0, h);
+  ground.addColorStop(0.5, "rgba(8,16,5,0)");
+  ground.addColorStop(1, "rgba(8,16,5,0.55)");
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 0, w, h);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * A tiling height field: `count` soft round bumps of random size, wrapped
+ * at the edges so the texture repeats without seams.
+ */
+function bumpField(size, count, rMin, rMax) {
+  const field = new Float32Array(size * size);
+  for (let k = 0; k < count; k++) {
+    const cx = Math.random() * size;
+    const cy = Math.random() * size;
+    const r = rand(rMin, rMax);
+    const a = rand(0.5, 1);
+    for (let y = Math.floor(cy - r); y <= cy + r; y++) {
+      for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+        const d = ((x - cx) ** 2 + (y - cy) ** 2) / (r * r);
+        if (d >= 1) continue;
+        const i = ((y + size) % size) * size + ((x + size) % size);
+        field[i] += a * (1 - d) * (1 - d);
+      }
+    }
+  }
+  return field;
+}
+
+/** Hammered-glass normal map: thousands of small overlapping dimples. */
+function makeHammeredNormalMap(size) {
+  const field = bumpField(size, (size * size) / 28, 3, 8);
+  // halve the slopes: steep dimple edges sparkle as noisy specks
+  const at = (x, y) =>
+    field[((y + size) % size) * size + ((x + size) % size)] * 0.5;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = at(x + 1, y) - at(x - 1, y);
+      const dy = at(x, y + 1) - at(x, y - 1);
+      const len = Math.hypot(dx, dy, 1);
+      const o = (y * size + x) * 4;
+      img.data[o] = (-dx / len) * 127.5 + 127.5;
+      img.data[o + 1] = (-dy / len) * 127.5 + 127.5;
+      img.data[o + 2] = (1 / len) * 127.5 + 127.5;
+      img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}

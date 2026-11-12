@@ -1,4 +1,3 @@
-import SceneBackground from "./components/three/SceneBackground";
 import CursorGlow from "./components/ui/CursorGlow";
 import ScrollRail from "./components/layout/ScrollRail";
 import Nav from "./components/layout/Nav";
@@ -15,13 +14,13 @@ export default function App() {
 
   return (
     <>
-      <SceneBackground isDark={isDark} />
+      <div className="scene-bg" />
       <CursorGlow />
       <ScrollRail />
 
       <div className="relative z-10">
         <Nav theme={theme} onToggleTheme={toggleTheme} />
-        <Hero />
+        <Hero isDark={isDark} />
         <About />
         <Skills />
         <Projects />

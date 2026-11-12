@@ -69,24 +69,27 @@ h1, h2, h3, p, a, span, div,
 }
 
 /* ----------------------------------------------------------------------
-   Background scene layer
+   Page backdrop — a still wash behind every section, tinted with the
+   greens of the hero's glass so the page below reads as the same room.
 ---------------------------------------------------------------------- */
 .scene-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   transition: background-color 0.5s ease;
-  background: radial-gradient(65% 55% at 80% 12%, color-mix(in srgb, var(--amber) 28%, transparent), transparent 70%),
+  background: radial-gradient(65% 55% at 80% 12%, color-mix(in srgb, var(--sage) 24%, transparent), transparent 70%),
     radial-gradient(45% 40% at 10% 90%, color-mix(in srgb, var(--sage) 14%, transparent), transparent 70%),
     linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 45%, var(--bg) 100%);
 }
-@media (pointer: fine) {
-  .glass-drag {
-    cursor: grab;
-  }
-  .glass-drag:active {
-    cursor: grabbing;
-  }
+/* The hero's glass pane (GlassScene): fills the hero and dissolves into
+   the page at its bottom edge. */
+.hero-glass {
+  position: absolute;
+  inset: 0;
+  mask-image: linear-gradient(to bottom, #000 84%, transparent);
+}
+.hero-glass canvas {
+  display: block;
 }
 
 /* ----------------------------------------------------------------------
