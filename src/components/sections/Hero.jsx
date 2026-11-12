@@ -8,7 +8,10 @@ export default function Hero() {
 
   return (
     <section id="top" className="relative min-h-[100svh] flex items-end overflow-hidden">
-      <div className="relative max-w-6xl mx-auto px-6 md:px-10 pb-24 pt-40 w-full">
+      {/* Drag here to tilt the glass scene (see SceneBackground). The text
+          lets pointer events through to it; only the buttons catch them. */}
+      <div id="glass-drag" className="glass-drag absolute inset-0" />
+      <div className="relative max-w-6xl mx-auto px-6 md:px-10 pb-24 pt-40 w-full pointer-events-none">
         <Reveal className="font-mono text-xs uppercase tracking-[0.25em] mb-6" style={{ color: "var(--clay)" }}>
           Full-stack developer — {new Date().getFullYear()}
         </Reveal>
@@ -22,7 +25,7 @@ export default function Hero() {
             <br />I build full products — from the schema to the last pixel.
           </h1>
         </Reveal>
-        <Reveal delay={2} className="mt-10 flex flex-wrap gap-4">
+        <Reveal delay={2} className="mt-10 flex flex-wrap gap-4 pointer-events-auto">
           <a
             ref={workBtn.ref}
             onMouseMove={workBtn.onMouseMove}

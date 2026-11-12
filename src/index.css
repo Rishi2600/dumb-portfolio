@@ -80,11 +80,13 @@ h1, h2, h3, p, a, span, div,
     radial-gradient(45% 40% at 10% 90%, color-mix(in srgb, var(--sage) 14%, transparent), transparent 70%),
     linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 45%, var(--bg) 100%);
 }
-.scene-vignette {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 30%, transparent 55%, color-mix(in srgb, var(--bg) 90%, transparent) 100%);
+@media (pointer: fine) {
+  .glass-drag {
+    cursor: grab;
+  }
+  .glass-drag:active {
+    cursor: grabbing;
+  }
 }
 
 /* ----------------------------------------------------------------------
