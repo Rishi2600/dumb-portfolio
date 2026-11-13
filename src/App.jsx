@@ -22,9 +22,10 @@ export default function App() {
 
         {/* The hero stays pinned; everything after it rides on a sheet
             that slides up over the glass (see .page-sheet). */}
-        <div className="page-sheet-shadow" />
         <div className="page-sheet">
-          <CursorGlow />
+          <div className="page-sheet-glow">
+            <CursorGlow />
+          </div>
           <div className="relative z-10">
             <About />
             <Skills />

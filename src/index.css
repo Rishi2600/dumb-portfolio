@@ -94,29 +94,22 @@ h1, h2, h3, p, a, span, div,
 .page-sheet {
   position: relative;
   border-radius: 28px 28px 0 0;
-  /* also clips the cursor glow inside it, so it never spills onto the
-     glass; that rules out a box-shadow, hence .page-sheet-shadow */
-  clip-path: inset(0 round 28px 28px 0 0);
+  box-shadow: 0 -30px 70px -20px var(--shadow);
   background:
     radial-gradient(900px 520px at 82% 0, color-mix(in srgb, var(--sage) 20%, transparent), transparent 70%),
     var(--bg);
   transition: background-color 0.5s ease;
 }
-/* a zero-height marker just above the sheet; its shadow reaches up the
-   glass and tucks in behind the sheet's rounded corners */
-.page-sheet-shadow {
-  position: relative;
-  height: 0;
-  pointer-events: none;
-}
-.page-sheet-shadow::before {
-  content: "";
+/* Holds the cursor glow, between the sheet's background and its content.
+   It is the sheet's own shape and clips to it, so the glow never spills
+   onto the glass above. (Not clip-path on the sheet: that breaks the
+   scroll-into-view checks the reveal animations depend on.) */
+.page-sheet-glow {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -28px;
-  height: 120px;
-  background: linear-gradient(to top, var(--shadow), transparent);
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 /* ----------------------------------------------------------------------
@@ -472,7 +465,8 @@ h1, h2, h3, p, a, span, div,
 }
 
 .cursor-glow {
-  position: fixed;
+  position: absolute;
+  will-change: transform;
   top: 0;
   left: 0;
   width: 460px;

@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 
 /**
- * A soft warm glow that eases toward the cursor. Sits between the 3D
- * scene and the page content, so it shows through the glass/blurred
+ * A soft warm glow that eases toward the cursor. Sits between the page
+ * sheet's background and its content, so it shows through the blurred
  * cards as you move — a lightweight way to make the whole page feel
- * like it's responding to you, not just the hero.
+ * like it's responding to you, not just the hero. It's positioned inside
+ * its parent layer (.page-sheet-glow), which clips it to the sheet.
  */
 export default function CursorGlow() {
   const ref = useRef(null);
@@ -29,7 +30,9 @@ export default function CursorGlow() {
       x += (targetX - x) * 0.08;
       y += (targetY - y) * 0.08;
       if (ref.current) {
-        ref.current.style.transform = `translate(${x}px, ${y}px)`;
+        // the cursor is in viewport coordinates; the glow sits in its layer
+        const layer = ref.current.parentElement.getBoundingClientRect();
+        ref.current.style.transform = `translate(${x - layer.left}px, ${y - layer.top}px)`;
       }
       frameId = requestAnimationFrame(animate);
     };
