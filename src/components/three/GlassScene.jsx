@@ -61,8 +61,10 @@ export default function GlassScene({ isDark = false }) {
 
     // The sun is behind the plant, shining toward the pane. Leaves that
     // catch it glow from the back; ones in front of them sit in their shade.
+    // At night the same light moves round to where the moon is.
     const sun = new THREE.DirectionalLight(0xfff0d2, 1);
-    sun.position.set(-4, 7, -9);
+    const SUN_AT = new THREE.Vector3(-4, 7, -9);
+    const MOON_AT = new THREE.Vector3(8, 5.5, -13.5);
     sun.target.position.set(2, 0, -2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -152,16 +154,20 @@ export default function GlassScene({ isDark = false }) {
       roughness: 0.42, // slightly waxy, so the cursor light glances off
     });
     // Leaves are thin: light hitting the far side comes through, tinted
-    // yellow-green. Standard materials only light the facing side, so add
-    // that term to three's direct-lighting function (shadows still apply).
+    // by the leaf (yellow-green in sun, a dim grey-green by moonlight).
+    // Standard materials only light the facing side, so add that term to
+    // three's direct-lighting function (shadows still apply).
+    const throughTint = { value: new THREE.Color() };
     leafMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uThrough = throughTint;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <lights_physical_pars_fragment>",
-        THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+        "uniform vec3 uThrough;\n" +
+          THREE.ShaderChunk.lights_physical_pars_fragment.replace(
           "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );",
           `reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );
           float through = saturate( dot( -geometryNormal, directLight.direction ) );
-          reflectedLight.directDiffuse += through * directLight.color * vec3( 1.5, 1.3, 0.45 ) * BRDF_Lambert( material.diffuseColor );`,
+          reflectedLight.directDiffuse += through * directLight.color * uThrough * BRDF_Lambert( material.diffuseColor );`,
         ),
       );
     };
@@ -278,7 +284,11 @@ export default function GlassScene({ isDark = false }) {
       dark: new THREE.Color().setRGB(...dark),
     });
     const THEME = {
-      backdrop: pair([0.95, 0.95, 0.92], [0.06, 0.09, 0.14]),
+      backdrop: pair([0.95, 0.95, 0.92], [0.08, 0.12, 0.19]),
+      // light from above: warm daylight, or the cold blue of a night sky
+      skyLight: pair([0.89, 0.93, 0.79], [0.16, 0.24, 0.5]),
+      groundLight: pair([0.023, 0.042, 0.012], [0.003, 0.005, 0.008]),
+      through: pair([1.5, 1.3, 0.45], [0.5, 0.75, 0.6]),
       glow: pair([2.6, 2.4, 2.0], [0, 0, 0]),
       moon: pair([0, 0, 0], [1.7, 2.1, 3.4]),
       fog: pair([0.016, 0.036, 0.01], [0.003, 0.008, 0.008]),
@@ -335,6 +345,10 @@ export default function GlassScene({ isDark = false }) {
       themed(moonGlow.material.color, "moon");
       themed(plant.fog.color, "fog");
       themed(sun.color, "sun");
+      sun.position.copy(SUN_AT).lerp(MOON_AT, night);
+      themed(hemi.color, "skyLight");
+      themed(hemi.groundColor, "groundLight");
+      themed(throughTint.value, "through");
       themed(cursorLight.color, "light");
       themed(uniforms.uFrostTint.value, "frost");
       themed(uniforms.uSkyColor.value, "sky");
@@ -343,9 +357,11 @@ export default function GlassScene({ isDark = false }) {
       uniforms.uFog.value = THREE.MathUtils.smoothstep(scrolled, 0.1, 0.9);
       themed(uniforms.uLightColor.value, "light");
       themed(uniforms.uSunColor.value, "sun").multiplyScalar(mix(1, 0.5));
-      hemi.intensity = mix(0.5, 0.15);
-      sun.intensity = mix(3.6, 0.9);
-      cursorLight.intensity = mix(7, 4);
+      hemi.intensity = mix(0.5, 0.45);
+      sun.intensity = mix(3.6, 1.3);
+      // (by night the cursor light barely reaches the leaves: lit from the
+      // front they go flat and green)
+      cursorLight.intensity = mix(7, 1.2);
 
       // camera leans toward the cursor, with a slow idle drift on top
       look.x += (pointer.x - look.x) * 0.06;
