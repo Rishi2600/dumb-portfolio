@@ -62,6 +62,7 @@ export const glassFragment = /* glsl */ `
   const float WIRE_STEP = 0.17;
   const float WIRE_HALF_WIDTH = 0.0035;
   const float WIRE_DEPTH = 0.06;
+  const float PANE_THICKNESS = 0.12;
 
   // how heavily frosted this spot of the pane is (set once per pixel)
   float frost;
@@ -107,20 +108,26 @@ export const glassFragment = /* glsl */ `
     vec2 grain = texture2D(tBump, vUv * uBumpRepeat * 3.1 + 0.37).xy * 2.0 - 1.0;
     vec2 surface = bump + grain * 0.4;
 
-    // rain on the far side (see rain.js): where the pane is wet the frost
-    // clears, and each drop bends the view like a small lens
+    vec3 V = normalize(cameraPosition - vWorldPos);
+
+    // Rain on the far face of the pane (see rain.js). We see it through
+    // the glass: the drops sit a pane's thickness behind the surface, so
+    // they shift against it as the view tilts, and the pebbles in front
+    // wobble and soften their outlines. Where the far face is wet the
+    // frost thins, and each drop bends the view a little, like a lens.
     float wet = 0.0;
     vec2 lens = vec2(0.0);
     if (uRain > 0.0) {
-      vec3 rain = texture2D(tRain, (vWorldPos.xy + bump * 0.012) / uRainArea + 0.5).rgb;
-      wet = smoothstep(0.25, 0.55, rain.b);
+      vec2 rainPos = vWorldPos.xy - V.xy / max(V.z, 0.2) * PANE_THICKNESS + bump * 0.035;
+      vec3 rain = texture2D(tRain, rainPos / uRainArea + 0.5).rgb;
+      wet = smoothstep(0.2, 0.75, rain.b);
       lens = (rain.rg - 0.5) * vec2(2.0, -2.0) * wet;
-      frost *= 1.0 - 0.9 * wet;
+      frost *= 1.0 - 0.8 * wet;
     }
 
     // 1. refraction: each pebble bends the view, more for distant things
     float r0 = blurRadius(sceneDepth(screenUv));
-    vec2 bend = bump * (0.004 + r0 * 0.8) - lens * 0.022;
+    vec2 bend = bump * (0.004 + r0 * 0.8) - lens * 0.012;
     vec2 uv = screenUv + vec2(bend.x / aspect, bend.y);
 
     // 2. depth-aware frost: gather a disc of samples around this pixel.
@@ -151,19 +158,21 @@ export const glassFragment = /* glsl */ `
     // a little milkiness, and each pebble is a tiny lens: brighter on the
     // side facing the sky, darker underneath — the relief you see even
     // where there's nothing but flat light behind the pane
-    col = mix(col, uFrostTint, (0.03 + 0.08 * uneven) * (1.0 - wet));
+    col = mix(col, uFrostTint, (0.03 + 0.08 * uneven) * (1.0 - 0.6 * wet));
     col *= vec3(0.94, 0.985, 0.955); // the faint green of glass seen through its thickness
-    // drops are dark around the rim and catch a spot of light near the top
-    col *= 1.0 - 0.28 * wet * smoothstep(0.55, 1.0, length(lens));
-    float catchLight = max(dot(normalize(vec3(lens, 0.8)), normalize(vec3(-0.4, 0.6, 0.7))), 0.0);
-    col += uLightColor * pow(catchLight, 32.0) * wet * 1.5;
+    // Water lets the light behind straight through, so drops glow against
+    // the frost. A drop is a lens and flips what's behind it: the sky ends
+    // up along its lower edge, the dark ground along the top. No glint on
+    // our side — the room's light never reaches them.
+    float skyInDrop = 0.5 - 0.5 * lens.y;
+    col *= 1.0 + wet * (1.2 * skyInDrop - 0.25);
+    col += uLightColor * wet * skyInDrop * 0.3;
     // scrolling away fogs the pane over until nothing shows through
     col = mix(col, uFogColor, uFog);
     col *= 1.0 + dot(surface, vec2(0.3, 0.7));
 
     // 3. the surface: glints, sky reflection, wire
     vec3 N = normalize(vec3(surface * 0.9, 1.0));
-    vec3 V = normalize(cameraPosition - vWorldPos);
 
     vec3 toLight = uLightPos - vWorldPos;
     float falloff = 1.0 / (1.0 + dot(toLight, toLight) * 0.12);
