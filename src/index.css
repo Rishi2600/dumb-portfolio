@@ -69,44 +69,54 @@ h1, h2, h3, p, a, span, div,
 }
 
 /* ----------------------------------------------------------------------
-   Page backdrop — a still wash behind every section, tinted with the
-   greens of the hero's glass so the page below reads as the same room.
+   Hero and the page sheet
+
+   The hero (a pane of glass, see GlassScene) stays pinned to the top
+   while the rest of the page slides up over it as a sheet with rounded
+   corners, casting a soft shadow on the glass.
 ---------------------------------------------------------------------- */
-.scene-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  transition: background-color 0.5s ease;
-  background: radial-gradient(65% 55% at 80% 12%, color-mix(in srgb, var(--sage) 24%, transparent), transparent 70%),
-    radial-gradient(45% 40% at 10% 90%, color-mix(in srgb, var(--sage) 14%, transparent), transparent 70%),
-    linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 45%, var(--bg) 100%);
+/* not on short screens: there the hero can be taller than the viewport,
+   and pinned, its lower half would never scroll into view */
+@media (min-height: 700px) {
+  .hero-pin {
+    position: sticky;
+    top: 0;
+  }
 }
-/* The hero's glass pane (GlassScene). It ends at a window sill; the page
-   below is the wall under the window. */
 .hero-glass {
   position: absolute;
-  inset: 0 0 22px 0; /* stops behind the sill */
+  inset: 0;
 }
 .hero-glass canvas {
   display: block;
 }
-/* Top to bottom: the seam where glass meets frame, the top of the ledge
-   catching the light, its front lip, then the shadow it casts on the wall. */
-.hero-sill {
+
+.page-sheet {
+  position: relative;
+  border-radius: 28px 28px 0 0;
+  /* also clips the cursor glow inside it, so it never spills onto the
+     glass; that rules out a box-shadow, hence .page-sheet-shadow */
+  clip-path: inset(0 round 28px 28px 0 0);
+  background:
+    radial-gradient(900px 520px at 82% 0, color-mix(in srgb, var(--sage) 20%, transparent), transparent 70%),
+    var(--bg);
+  transition: background-color 0.5s ease;
+}
+/* a zero-height marker just above the sheet; its shadow reaches up the
+   glass and tucks in behind the sheet's rounded corners */
+.page-sheet-shadow {
+  position: relative;
+  height: 0;
+  pointer-events: none;
+}
+.page-sheet-shadow::before {
+  content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: 40px;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.35) 0 1px,
-    color-mix(in srgb, var(--surface) 90%, white) 1px 12px,
-    color-mix(in srgb, var(--surface) 84%, black) 12px 18px,
-    var(--shadow) 18px,
-    transparent 40px
-  );
+  bottom: -28px;
+  height: 120px;
+  background: linear-gradient(to top, var(--shadow), transparent);
 }
 
 /* ----------------------------------------------------------------------
@@ -723,7 +733,7 @@ button:focus-visible {
   .form-spin {
     animation-duration: 2.4s;
   }
-  h1, h2, h3, p, a, span, div, body, .scene-bg {
+  h1, h2, h3, p, a, span, div, body, .page-sheet {
     transition: none;
   }
 }

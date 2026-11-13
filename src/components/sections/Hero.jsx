@@ -8,9 +8,8 @@ export default function Hero({ isDark }) {
   const contactBtn = useMagnetic();
 
   return (
-    <section id="top" className="relative min-h-[100svh] flex items-end overflow-hidden">
+    <section id="top" className="hero-pin relative min-h-[100svh] flex items-end overflow-hidden">
       <GlassScene isDark={isDark} />
-      <div className="hero-sill" />
       <div className="relative max-w-6xl mx-auto px-6 md:px-10 pb-24 pt-40 w-full">
         <Reveal className="font-mono text-xs uppercase tracking-[0.25em] mb-6" style={{ color: "var(--clay)" }}>
           Full-stack developer — {new Date().getFullYear()}

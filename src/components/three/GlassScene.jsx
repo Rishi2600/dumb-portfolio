@@ -252,13 +252,6 @@ export default function GlassScene({ isDark = false }) {
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(mount);
 
-    // don't burn the GPU once the hero has scrolled away
-    let onScreen = true;
-    const viewObserver = new IntersectionObserver(([entry]) => {
-      onScreen = entry.isIntersecting;
-    });
-    viewObserver.observe(mount);
-
     const pointer = { x: 0, y: 0 }; // -1..1 across the hero
     const onPointerMove = (e) => {
       const rect = mount.getBoundingClientRect();
@@ -267,7 +260,7 @@ export default function GlassScene({ isDark = false }) {
     };
     window.addEventListener("pointermove", onPointerMove);
 
-    // how far the hero has scrolled away, 0..1 — fogs the pane over
+    // how far the page has slid up over the hero, 0..1 — fogs the pane
     let scrolled = 0;
     const onScroll = () => {
       scrolled = Math.min(window.scrollY / mount.clientHeight, 1);
@@ -317,7 +310,7 @@ export default function GlassScene({ isDark = false }) {
       const elapsed = (now - last) / 1000;
       const dt = Math.min(elapsed, 0.05);
       last = now;
-      if (!onScreen) return;
+      if (scrolled >= 1) return; // fully covered: don't burn the GPU
       t += dt * speed;
 
       // If frames are running slow, draw fewer pixels and let the browser
@@ -437,7 +430,6 @@ export default function GlassScene({ isDark = false }) {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("scroll", onScroll);
       resizeObserver.disconnect();
-      viewObserver.disconnect();
 
       [plant, front].forEach((scene) =>
         scene.traverse((obj) => {

@@ -14,18 +14,25 @@ export default function App() {
 
   return (
     <>
-      <div className="scene-bg" />
-      <CursorGlow />
       <ScrollRail />
 
       <div className="relative z-10">
         <Nav theme={theme} onToggleTheme={toggleTheme} />
         <Hero isDark={isDark} />
-        <About />
-        <Skills />
-        <Projects />
-        <Contact />
-        <Footer />
+
+        {/* The hero stays pinned; everything after it rides on a sheet
+            that slides up over the glass (see .page-sheet). */}
+        <div className="page-sheet-shadow" />
+        <div className="page-sheet">
+          <CursorGlow />
+          <div className="relative z-10">
+            <About />
+            <Skills />
+            <Projects />
+            <Contact />
+            <Footer />
+          </div>
+        </div>
       </div>
     </>
   );
