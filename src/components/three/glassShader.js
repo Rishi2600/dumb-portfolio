@@ -155,8 +155,13 @@ export const glassFragment = /* glsl */ `
     col += uSkyColor * up * fresnel * 0.7;
 
     // wire mesh a little way inside the glass: it shifts against the
-    // surface as the view tilts, and wobbles slightly through the pebbles
-    vec2 wirePos = vWorldPos.xy - V.xy / max(V.z, 0.2) * WIRE_DEPTH + bump * 0.006;
+    // surface as the view tilts, and wobbles slightly through the pebbles.
+    // Real mesh is never a perfect grid, so the strands wander a little.
+    vec2 wander = vec2(
+      sin(vWorldPos.y * 2.1 + vWorldPos.x * 0.3),
+      sin(vWorldPos.x * 1.7 - vWorldPos.y * 0.4)
+    ) * 0.012;
+    vec2 wirePos = vWorldPos.xy - V.xy / max(V.z, 0.2) * WIRE_DEPTH + bump * 0.006 + wander;
     vec2 cell = abs(fract(wirePos / WIRE_STEP - 0.5) - 0.5) * WIRE_STEP;
     float d = min(cell.x, cell.y);
     float px = length(fwidth(vWorldPos.xy)) * 0.7;
