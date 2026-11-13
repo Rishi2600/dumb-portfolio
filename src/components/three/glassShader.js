@@ -50,6 +50,9 @@ export const glassFragment = /* glsl */ `
   uniform vec3 uWireColor;
   uniform vec3 uFogColor;
   uniform float uFog;
+  uniform sampler2D tRain;
+  uniform vec2 uRainArea;
+  uniform float uRain;
 
   varying vec2 vUv;
   varying vec3 vWorldPos;
@@ -104,9 +107,20 @@ export const glassFragment = /* glsl */ `
     vec2 grain = texture2D(tBump, vUv * uBumpRepeat * 3.1 + 0.37).xy * 2.0 - 1.0;
     vec2 surface = bump + grain * 0.4;
 
+    // rain on the far side (see rain.js): where the pane is wet the frost
+    // clears, and each drop bends the view like a small lens
+    float wet = 0.0;
+    vec2 lens = vec2(0.0);
+    if (uRain > 0.0) {
+      vec3 rain = texture2D(tRain, (vWorldPos.xy + bump * 0.012) / uRainArea + 0.5).rgb;
+      wet = smoothstep(0.25, 0.55, rain.b);
+      lens = (rain.rg - 0.5) * vec2(2.0, -2.0) * wet;
+      frost *= 1.0 - 0.9 * wet;
+    }
+
     // 1. refraction: each pebble bends the view, more for distant things
     float r0 = blurRadius(sceneDepth(screenUv));
-    vec2 bend = bump * (0.004 + r0 * 0.8);
+    vec2 bend = bump * (0.004 + r0 * 0.8) - lens * 0.022;
     vec2 uv = screenUv + vec2(bend.x / aspect, bend.y);
 
     // 2. depth-aware frost: gather a disc of samples around this pixel.
@@ -137,8 +151,12 @@ export const glassFragment = /* glsl */ `
     // a little milkiness, and each pebble is a tiny lens: brighter on the
     // side facing the sky, darker underneath — the relief you see even
     // where there's nothing but flat light behind the pane
-    col = mix(col, uFrostTint, 0.03 + 0.08 * uneven);
+    col = mix(col, uFrostTint, (0.03 + 0.08 * uneven) * (1.0 - wet));
     col *= vec3(0.94, 0.985, 0.955); // the faint green of glass seen through its thickness
+    // drops are dark around the rim and catch a spot of light near the top
+    col *= 1.0 - 0.28 * wet * smoothstep(0.55, 1.0, length(lens));
+    float catchLight = max(dot(normalize(vec3(lens, 0.8)), normalize(vec3(-0.4, 0.6, 0.7))), 0.0);
+    col += uLightColor * pow(catchLight, 32.0) * wet * 1.5;
     // scrolling away fogs the pane over until nothing shows through
     col = mix(col, uFogColor, uFog);
     col *= 1.0 + dot(surface, vec2(0.3, 0.7));

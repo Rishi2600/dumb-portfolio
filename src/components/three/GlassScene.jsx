@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { glassVertex, glassFragment } from "./glassShader";
+import { createRain, RAIN_AREA } from "./rain";
 
 /**
  * The hero's backdrop: a pane of hammered, wired glass with a plant
@@ -170,6 +171,7 @@ export default function GlassScene({ isDark = false }) {
     // ------------------------------------------------------------------
     const front = new THREE.Scene();
     const bumpTex = makeHammeredNormalMap(512);
+    const rain = createRain();
     const uniforms = {
       tScene: { value: target.texture },
       tDepth: { value: target.depthTexture },
@@ -191,6 +193,9 @@ export default function GlassScene({ isDark = false }) {
       uWireColor: { value: new THREE.Color() },
       uFogColor: { value: new THREE.Color() },
       uFog: { value: 0 },
+      tRain: { value: rain.texture },
+      uRainArea: { value: new THREE.Vector2(...RAIN_AREA) },
+      uRain: { value: 0 },
     };
     const glass = new THREE.Mesh(
       new THREE.PlaneGeometry(GLASS_W, GLASS_H),
@@ -380,6 +385,10 @@ export default function GlassScene({ isDark = false }) {
       }
       leaves.instanceMatrix.needsUpdate = true;
 
+      // showers pass now and then at night (not with reduced motion)
+      const wet = rain.update(dt, night > 0.5 && !prefersReduced);
+      uniforms.uRain.value = wet ? 1 : 0;
+
       // the leaves move slowly; their shadows don't need redrawing each frame
       if (frame++ % 3 === 0) renderer.shadowMap.needsUpdate = true;
       renderer.setRenderTarget(target);
@@ -402,7 +411,9 @@ export default function GlassScene({ isDark = false }) {
           if (obj.material) obj.material.dispose();
         }),
       );
-      [backdropTex, glowTex, leafTex, bumpTex].forEach((tex) => tex.dispose());
+      [backdropTex, glowTex, leafTex, bumpTex, rain.texture].forEach((tex) =>
+        tex.dispose(),
+      );
       target.depthTexture.dispose();
       target.dispose();
 
