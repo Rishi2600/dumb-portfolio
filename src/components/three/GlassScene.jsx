@@ -347,7 +347,9 @@ export default function GlassScene({ isDark = false }) {
       themed(uniforms.uSkyColor.value, "sky");
       themed(uniforms.uWireColor.value, "wire");
       themed(uniforms.uFogColor.value, "page");
-      uniforms.uFog.value = THREE.MathUtils.smoothstep(scrolled, 0.1, 0.9);
+      // only a partial fog, and late: the pane stays on show while the page
+      // slides over it
+      uniforms.uFog.value = THREE.MathUtils.smoothstep(scrolled, 0.25, 1) * 0.7;
       themed(uniforms.uLightColor.value, "light");
       themed(uniforms.uSunColor.value, "sun").multiplyScalar(mix(1, 0.5));
       hemi.intensity = mix(0.5, 0.45);
