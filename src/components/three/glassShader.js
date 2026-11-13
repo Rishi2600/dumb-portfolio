@@ -74,6 +74,10 @@ export const glassFragment = /* glsl */ `
     float aspect = uResolution.x / uResolution.y;
     vec2 screenUv = gl_FragCoord.xy / uResolution;
     vec2 bump = texture2D(tBump, vUv * uBumpRepeat).xy * 2.0 - 1.0;
+    // a fine frost grain riding on the pebbles (the same texture, much
+    // smaller): it roughens the surface for light, not the view through it
+    vec2 grain = texture2D(tBump, vUv * uBumpRepeat * 3.1 + 0.37).xy * 2.0 - 1.0;
+    vec2 surface = bump + grain * 0.4;
 
     // 1. refraction: each pebble bends the view, more for distant things
     float r0 = blurRadius(sceneDepth(screenUv));
@@ -109,10 +113,10 @@ export const glassFragment = /* glsl */ `
     // side facing the sky, darker underneath — the relief you see even
     // where there's nothing but flat light behind the pane
     col = mix(col, uFrostTint, 0.07);
-    col *= 1.0 + dot(bump, vec2(0.3, 0.7));
+    col *= 1.0 + dot(surface, vec2(0.3, 0.7));
 
     // 3. the surface: glints, sky reflection, wire
-    vec3 N = normalize(vec3(bump * 0.9, 1.0));
+    vec3 N = normalize(vec3(surface * 0.9, 1.0));
     vec3 V = normalize(cameraPosition - vWorldPos);
 
     vec3 toLight = uLightPos - vWorldPos;
