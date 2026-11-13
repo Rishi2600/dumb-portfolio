@@ -103,7 +103,6 @@ export default function GlassScene({ isDark = false }) {
         fog: false,
       }),
     );
-    sunGlow.position.set(-0.3, 1.2, -6.8);
     plant.add(sunGlow);
 
     const { leafData, vines } = makePlantLayout();
@@ -328,6 +327,9 @@ export default function GlassScene({ isDark = false }) {
       sun.intensity = mix(3.6, 0.9);
       cursorLight.intensity = mix(7, 4);
       sunGlow.scale.setScalar(mix(9, 5));
+      // the sun sits left of centre; the moon rises up on the right, behind
+      // the foliage and clear of the hero text
+      sunGlow.position.set(mix(-0.3, 4.5), mix(1.2, 2.3), -6.8);
 
       // camera leans toward the cursor, with a slow idle drift on top
       look.x += (pointer.x - look.x) * 0.06;
