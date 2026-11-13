@@ -129,7 +129,7 @@ export default function GlassScene({ isDark = false }) {
     const leafMat = new THREE.MeshStandardMaterial({
       map: leafTex,
       side: THREE.DoubleSide,
-      roughness: 0.6,
+      roughness: 0.42, // slightly waxy, so the cursor light glances off
     });
     // Leaves are thin: light hitting the far side comes through, tinted
     // yellow-green. Standard materials only light the facing side, so add
@@ -489,37 +489,58 @@ function makeLeafGeometry() {
   return geo;
 }
 
-/** Pale leaf surface with a midrib and side veins; tinted per instance. */
+/**
+ * Pale leaf surface, tinted per instance: darker toward the edges, a few
+ * soft blotches so it isn't one flat colour, and faint veins — each a thin
+ * light line with a thinner shadow beside it, like a shallow crease.
+ */
 function makeLeafTexture() {
   const size = 256;
+  const mid = size / 2;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d");
 
   const fill = ctx.createLinearGradient(0, 0, size, 0);
-  fill.addColorStop(0, "#b9c4a6");
-  fill.addColorStop(0.5, "#f4f7ea");
-  fill.addColorStop(1, "#b9c4a6");
+  fill.addColorStop(0, "#aab894");
+  fill.addColorStop(0.5, "#eef2e0");
+  fill.addColorStop(1, "#aab894");
   ctx.fillStyle = fill;
   ctx.fillRect(0, 0, size, size);
 
-  ctx.strokeStyle = "rgba(255,255,255,0.55)";
-  ctx.lineCap = "round";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(size / 2, size);
-  ctx.lineTo(size / 2, 0);
-  ctx.stroke();
-  ctx.lineWidth = 2.5;
-  for (let y = size - 24; y > 30; y -= 30) {
-    ctx.beginPath();
-    ctx.moveTo(size / 2, y);
-    ctx.quadraticCurveTo(size * 0.3, y - 22, 4, y - 58);
-    ctx.moveTo(size / 2, y);
-    ctx.quadraticCurveTo(size * 0.7, y - 22, size - 4, y - 58);
-    ctx.stroke();
+  for (let i = 0; i < 26; i++) {
+    const x = rand(0, size);
+    const y = rand(0, size);
+    const r = rand(14, 44);
+    const blotch = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const tone = Math.random() < 0.5 ? "255,255,240" : "40,70,20";
+    blotch.addColorStop(0, `rgba(${tone},0.1)`);
+    blotch.addColorStop(1, `rgba(${tone},0)`);
+    ctx.fillStyle = blotch;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
+
+  const veins = (offset, style, width) => {
+    ctx.strokeStyle = style;
+    ctx.lineCap = "round";
+    ctx.lineWidth = width * 1.8;
+    ctx.beginPath();
+    ctx.moveTo(mid + offset, size);
+    ctx.lineTo(mid + offset, 0);
+    ctx.stroke();
+    ctx.lineWidth = width;
+    for (let y = size - 24; y > 30; y -= 30) {
+      ctx.beginPath();
+      ctx.moveTo(mid, y + offset);
+      ctx.quadraticCurveTo(size * 0.3, y - 22 + offset, 4, y - 58 + offset);
+      ctx.moveTo(mid, y + offset);
+      ctx.quadraticCurveTo(size * 0.7, y - 22 + offset, size - 4, y - 58 + offset);
+      ctx.stroke();
+    }
+  };
+  veins(2, "rgba(30,60,15,0.16)", 1.5);
+  veins(0, "rgba(255,255,235,0.3)", 2);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
