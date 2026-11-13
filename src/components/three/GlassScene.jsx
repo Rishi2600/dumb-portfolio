@@ -38,7 +38,8 @@ export default function GlassScene({ isDark = false }) {
     ).matches;
 
     const renderer = new THREE.WebGLRenderer();
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    renderer.setPixelRatio(pixelRatio);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -263,15 +264,33 @@ export default function GlassScene({ isDark = false }) {
     const speed = prefersReduced ? 0.15 : 1;
     let t = 0;
     let frame = 0;
+    const slowCheck = { time: 0, frames: 0 };
     let last = performance.now();
     let frameId;
 
     const animate = (now) => {
       frameId = requestAnimationFrame(animate);
-      const dt = Math.min((now - last) / 1000, 0.05);
+      const elapsed = (now - last) / 1000;
+      const dt = Math.min(elapsed, 0.05);
       last = now;
       if (!onScreen) return;
       t += dt * speed;
+
+      // If frames are running slow, draw fewer pixels and let the browser
+      // scale the canvas up. It only ever steps down — a slow GPU doesn't
+      // get faster. Skips start-up and pauses (tab switches, scrolled away).
+      if (frame > 60 && elapsed < 0.5) {
+        slowCheck.time += elapsed;
+        if (++slowCheck.frames === 45) {
+          if (slowCheck.time / 45 > 1 / 40 && pixelRatio > 0.6) {
+            pixelRatio = Math.max(pixelRatio * 0.8, 0.6);
+            renderer.setPixelRatio(pixelRatio);
+            resize();
+          }
+          slowCheck.time = 0;
+          slowCheck.frames = 0;
+        }
+      }
 
       night += ((isDarkRef.current ? 1 : 0) - night) * 0.05;
       const mix = (day, dark) => day + (dark - day) * night;
