@@ -16,12 +16,12 @@ import * as THREE from "three";
  * shader skips the lookup.
  */
 
-const W = 768;
-const H = 448;
+const W = 1024;
+const H = 600;
 /** The stretch of pane the texture covers, in world units (centred). */
 export const RAIN_AREA = [9.6, 5.6];
 
-const MAX_DROPLETS = 320;
+const MAX_DROPLETS = 500;
 
 export function createRain() {
   const canvas = makeCanvas();
@@ -47,7 +47,7 @@ export function createRain() {
 
   const addDroplet = (x, y, r) => {
     if (droplets.length < MAX_DROPLETS) {
-      droplets.push({ x, y, r, dry: rand(0.12, 0.3) });
+      droplets.push({ x, y, r, dry: rand(0.06, 0.18) });
     }
   };
 
@@ -67,15 +67,15 @@ export function createRain() {
       ? Math.min(1, (showerLength - showerLeft) / 3, showerLeft / 3)
       : 0;
 
-    toSpawn += 45 * intensity * dt;
+    toSpawn += 70 * intensity * dt;
     for (; toSpawn >= 1; toSpawn--) {
-      addDroplet(rand(0, W), rand(0, H), 1.5 + Math.random() ** 2 * 3.5);
+      addDroplet(rand(0, W), rand(0, H), 1.2 + Math.random() ** 2 * 2);
     }
     if (Math.random() < 1.1 * intensity * dt) {
       runners.push({
         x: rand(0, W),
         y: rand(-10, H * 0.5),
-        r: rand(5, 8),
+        r: rand(3.6, 5),
         vx: 0,
         vy: 0,
         stuck: rand(0.3, 1.5), // sits and gathers before it lets go
@@ -86,7 +86,7 @@ export function createRain() {
     // once the rain stops, droplets dry out
     if (!raining) {
       droplets.forEach((d) => (d.r -= d.dry * dt));
-      droplets = droplets.filter((d) => d.r > 0.8);
+      droplets = droplets.filter((d) => d.r > 0.6);
     }
 
     runners.forEach((run) => {
@@ -95,28 +95,30 @@ export function createRain() {
         return;
       }
       // heavier drops run faster; all of them wander a little sideways
-      run.vy += (run.r * 14 - run.vy) * Math.min(dt * 3, 1);
+      run.vy += (run.r * 24 - run.vy) * Math.min(dt * 3, 1);
       run.vx = (run.vx + rand(-40, 40) * dt) * 0.92;
       const step = run.vy * dt;
       run.x += run.vx * dt;
       run.y += step;
 
       // it leaves a thin wet trail, and loses a little water doing so
-      const width = run.r * 0.9;
+      const width = run.r * 0.8;
+      trail.globalAlpha = 0.5; // a film of water, thinner than a drop
       trail.drawImage(drop, run.x - width / 2, run.y - run.r, width, run.r * 1.2);
+      trail.globalAlpha = 1;
       trailAge = 0;
-      run.r -= step * 0.006;
+      run.r -= step * 0.003;
       run.bead -= step;
       if (run.bead <= 0) {
         // ...which breaks up into beads behind it
-        addDroplet(run.x + rand(-1, 1), run.y - run.r * 1.6, rand(1.2, 2.2));
-        run.bead = rand(18, 50);
+        addDroplet(run.x + rand(-1, 1), run.y - run.r * 1.6, rand(0.8, 1.4));
+        run.bead = rand(20, 60);
       }
 
       // it swallows the droplets in its way
       droplets = droplets.filter((d) => {
         const hit = Math.hypot(d.x - run.x, d.y - run.y) < run.r + d.r * 0.5;
-        if (hit) run.r = Math.min(run.r + d.r * 0.08, 10);
+        if (hit) run.r = Math.min(run.r + d.r * 0.08, 6);
         return !hit;
       });
 
@@ -127,8 +129,8 @@ export function createRain() {
       }
     });
     runners = runners.filter((run) => {
-      if (run.r < 2.5) addDroplet(run.x, run.y, run.r); // ran dry: stays put
-      return run.r >= 2.5 && run.y - run.r < H;
+      if (run.r < 1.8) addDroplet(run.x, run.y, run.r); // ran dry: stays put
+      return run.r >= 1.8 && run.y - run.r < H;
     });
 
     // trails dry: fade their layer a little, ten times a second
@@ -175,8 +177,8 @@ function makeCanvas() {
 
 /**
  * One drop, drawn at any size: red/green tilt outward from the centre to
- * the rim (128 = flat), blue is fully wet, and the edge is soft so the
- * shader can cut a clean outline at any scale.
+ * the rim (128 = flat), blue is wetness, fading out over the outer half so
+ * the drop reads as a soft blob — it's seen through frosted glass.
  */
 function makeDropSprite() {
   const size = 64;
@@ -194,7 +196,7 @@ function makeDropSprite() {
       img.data[o] = 127.5 + nx * 127.5;
       img.data[o + 1] = 127.5 + ny * 127.5;
       img.data[o + 2] = 255;
-      img.data[o + 3] = Math.min(Math.max((1 - d) / 0.2, 0), 1) * 255;
+      img.data[o + 3] = Math.min(Math.max((1 - d) / 0.5, 0), 1) * 255;
     }
   }
   ctx.putImageData(img, 0, 0);
