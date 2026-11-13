@@ -109,18 +109,20 @@ export default function GlassScene({ isDark = false }) {
       color: 0x46562a,
       roughness: 0.8,
     });
-    vines.forEach((points) => {
+    const stems = vines.map((vine) => {
       const stem = new THREE.Mesh(
         new THREE.TubeGeometry(
-          new THREE.CatmullRomCurve3(points),
-          points.length * 3,
+          new THREE.CatmullRomCurve3(vine.points),
+          vine.points.length * 3,
           0.02,
           5,
         ),
         stemMat,
       );
+      stem.position.copy(vine.root); // so it can swing about its root
       stem.castShadow = true;
       plant.add(stem);
+      return stem;
     });
 
     const leafTex = makeLeafTexture();
@@ -306,14 +308,34 @@ export default function GlassScene({ isDark = false }) {
       );
       cursorLight.position.copy(uniforms.uLightPos.value);
 
-      // leaves sway in a breeze that gusts now and then
-      const gust = 0.09 + Math.sin(t * 0.5) * 0.05;
+      // A breeze that gusts now and then. Each vine swings as a whole from
+      // its root — the hanging ones like pendulums — and every leaf rides
+      // along with its vine and flutters a little on top.
+      const gust = 0.75 + Math.sin(t * 0.5) * 0.25;
+      vines.forEach((vine, v) => {
+        vine.angle =
+          vine.amp *
+          gust *
+          (Math.sin(t * vine.speed + vine.phase) +
+            0.4 * Math.sin(t * vine.speed * 2.3 + vine.phase));
+        stems[v].rotation.z = vine.angle;
+      });
       for (let i = 0; i < leafData.length; i++) {
         const leaf = leafData[i];
-        const sway =
-          Math.sin(t * leaf.speed + leaf.phase + leaf.x * 0.3) * gust;
-        dummy.position.set(leaf.x, leaf.y, leaf.z);
-        dummy.rotation.set(leaf.rx + sway * 0.6, leaf.ry, leaf.rz + sway);
+        const vine = vines[leaf.vine];
+        const cos = Math.cos(vine.angle);
+        const sin = Math.sin(vine.angle);
+        const flutter = Math.sin(t * leaf.speed + leaf.phase) * 0.1 * gust;
+        dummy.position.set(
+          vine.root.x + leaf.x * cos - leaf.y * sin,
+          vine.root.y + leaf.x * sin + leaf.y * cos,
+          vine.root.z + leaf.z,
+        );
+        dummy.rotation.set(
+          leaf.rx + flutter * 0.6,
+          leaf.ry,
+          leaf.rz + vine.angle + flutter,
+        );
         dummy.scale.set(leaf.scale * leaf.width, leaf.scale, leaf.scale);
         dummy.updateMatrix();
         leaves.setMatrixAt(i, dummy.matrix);
@@ -367,20 +389,22 @@ function rand(min, max) {
  * vines hang from the top on the left, close to the glass, so that side
  * stays bright but still has crisp leaves near the surface.
  *
- * Returns the leaves and, per vine, the points its stem runs through.
+ * Returns the leaves and the vines they sit on (root, stem points, sway).
  */
 function makePlantLayout() {
   const leafData = [];
   const vines = [];
 
   const addVine = ({ x, y, z, rise, steps, drift, minX = -Infinity }) => {
-    const points = [new THREE.Vector3(x, y - rise, z)];
+    // stem points and leaf positions are stored relative to the root
+    const root = new THREE.Vector3(x, y - rise, z);
+    const points = [new THREE.Vector3()];
     const wave = rand(0, Math.PI * 2);
     for (let s = 0; s < steps; s++) {
       x = Math.max(x + drift + rand(-0.12, 0.12), minX);
       y += rise * rand(0.22, 0.32);
       const pz = Math.min(z + Math.sin(s * 0.45 + wave) * 0.22, -0.08);
-      points.push(new THREE.Vector3(x, y, pz));
+      points.push(new THREE.Vector3(x, y, pz).sub(root));
 
       const side = s % 2 ? 1 : -1;
       // 0 at the root, 1 at the growing tip: leaves start small, pale and
@@ -388,9 +412,10 @@ function makePlantLayout() {
       const youth = Math.pow(s / steps, 1.4);
       const yellow = Math.random() < 0.12 * (1 - youth);
       leafData.push({
-        x,
-        y,
-        z: pz,
+        vine: vines.length,
+        x: x - root.x,
+        y: y - root.y,
+        z: pz - root.z,
         rx: rand(-0.7, 0.2),
         ry: rand(-0.6, 0.6),
         // rising vines hold leaves up and out; hanging ones let them droop
@@ -406,7 +431,15 @@ function makePlantLayout() {
         ),
       });
     }
-    vines.push(points);
+    vines.push({
+      root,
+      points,
+      // hanging vines swing freely; rooted ones only lean
+      amp: rise < 0 ? rand(0.04, 0.08) : rand(0.008, 0.02),
+      speed: rise < 0 ? rand(1.5, 2.1) : rand(0.5, 0.9),
+      phase: rand(0, Math.PI * 2),
+      angle: 0,
+    });
   };
 
   for (let v = 0; v < 20; v++) {
