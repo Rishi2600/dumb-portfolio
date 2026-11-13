@@ -53,7 +53,7 @@ export const glassFragment = /* glsl */ `
   varying vec3 vWorldPos;
   varying float vViewZ;
 
-  const int TAPS = 28;
+  const int TAPS = 14;
   const float WIRE_STEP = 0.17;
   const float WIRE_HALF_WIDTH = 0.0035;
   const float WIRE_DEPTH = 0.06;
@@ -125,7 +125,7 @@ export const glassFragment = /* glsl */ `
       float reach = blurRadius(sceneDepth(tapUv));
       float w = clamp(1.0 + (reach - rad) / max(rad * 0.5, 1e-4), 0.0, 1.0);
       float concentration = rc / max(reach, 1e-4);
-      w *= clamp(concentration * concentration, 1.0, 8.0);
+      w *= clamp(concentration * concentration, 1.0, 4.0);
       float lod = log2(max(min(rc, reach) * lodScale, 1.0));
       col += textureLod(tScene, tapUv, lod).rgb * w;
       weight += w;
