@@ -56,8 +56,10 @@ export default function GlassScene({ isDark = false }) {
     const hemi = new THREE.HemisphereLight(0xf2f7e6, 0x2a3a1c, 1);
     plant.add(hemi);
 
+    // The sun is behind the plant, shining toward the pane. Leaves that
+    // catch it glow from the back; ones in front of them sit in their shade.
     const sun = new THREE.DirectionalLight(0xfff0d2, 1);
-    sun.position.set(-6, 9, 7);
+    sun.position.set(-4, 7, -9);
     sun.target.position.set(2, 0, -2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -67,8 +69,7 @@ export default function GlassScene({ isDark = false }) {
     sun.shadow.camera.bottom = -9;
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 30;
-    sun.shadow.bias = -0.0015;
-    sun.shadow.normalBias = 0.04;
+    sun.shadow.bias = -0.003;
     plant.add(sun, sun.target);
 
     // travels with the cursor, just in front of the pane
@@ -123,13 +124,28 @@ export default function GlassScene({ isDark = false }) {
     });
 
     const leafTex = makeLeafTexture();
+    const leafMat = new THREE.MeshStandardMaterial({
+      map: leafTex,
+      side: THREE.DoubleSide,
+      roughness: 0.6,
+    });
+    // Leaves are thin: light hitting the far side comes through, tinted
+    // yellow-green. Standard materials only light the facing side, so add
+    // that term to three's direct-lighting function (shadows still apply).
+    leafMat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <lights_physical_pars_fragment>",
+        THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+          "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );",
+          `reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );
+          float through = saturate( dot( -geometryNormal, directLight.direction ) );
+          reflectedLight.directDiffuse += through * directLight.color * vec3( 1.5, 1.3, 0.45 ) * BRDF_Lambert( material.diffuseColor );`,
+        ),
+      );
+    };
     const leaves = new THREE.InstancedMesh(
       makeLeafGeometry(),
-      new THREE.MeshStandardMaterial({
-        map: leafTex,
-        side: THREE.DoubleSide,
-        roughness: 0.6,
-      }),
+      leafMat,
       leafData.length,
     );
     leafData.forEach((leaf, i) => leaves.setColorAt(i, leaf.color));
@@ -163,9 +179,8 @@ export default function GlassScene({ isDark = false }) {
       uFrostTint: { value: new THREE.Color() },
       uLightPos: { value: new THREE.Vector3(0, 0, 1.4) },
       uLightColor: { value: new THREE.Color() },
-      uSunDir: {
-        value: sun.position.clone().sub(sun.target.position).normalize(),
-      },
+      // a fixed light on the room side of the pane, for glints on the pebbles
+      uSunDir: { value: new THREE.Vector3(-6, 9, 7).normalize() },
       uSunColor: { value: new THREE.Color() },
       uSkyColor: { value: new THREE.Color() },
       uWireColor: { value: new THREE.Color() },
@@ -265,7 +280,7 @@ export default function GlassScene({ isDark = false }) {
       themed(uniforms.uLightColor.value, "light");
       themed(uniforms.uSunColor.value, "sun").multiplyScalar(mix(1, 0.5));
       hemi.intensity = mix(0.5, 0.15);
-      sun.intensity = mix(2.8, 0.6);
+      sun.intensity = mix(3.6, 0.9);
       cursorLight.intensity = mix(7, 4);
       sunGlow.scale.setScalar(mix(9, 5));
 
