@@ -35,6 +35,7 @@ export const glassFragment = /* glsl */ `
   uniform sampler2D tDepth;
   uniform sampler2D tBump;
   uniform vec2 uResolution;
+  uniform float uSceneHeight;
   uniform vec2 uBumpRepeat;
   uniform float uNear;
   uniform float uFar;
@@ -113,7 +114,7 @@ export const glassFragment = /* glsl */ `
     //   - a narrower disc is more concentrated, so it counts for more —
     //     without this, leaf edges come out hard instead of feathered.
     float rc = blurRadius(sceneDepth(uv));
-    float lodScale = uResolution.y / sqrt(float(TAPS)) * 1.5;
+    float lodScale = uSceneHeight / sqrt(float(TAPS)) * 1.5;
     float spin = 6.2832 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     vec3 col = textureLod(tScene, uv, log2(max(rc * lodScale, 1.0))).rgb;
     float weight = 1.0;

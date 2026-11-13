@@ -42,6 +42,7 @@ export default function GlassScene({ isDark = false }) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false; // refreshed every few frames below
     mount.appendChild(renderer.domElement);
 
     const camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 40);
@@ -173,6 +174,7 @@ export default function GlassScene({ isDark = false }) {
       tDepth: { value: target.depthTexture },
       tBump: { value: bumpTex },
       uResolution: { value: new THREE.Vector2(1, 1) },
+      uSceneHeight: { value: 1 },
       uBumpRepeat: { value: new THREE.Vector2(GLASS_W / 2.4, GLASS_H / 2.4) },
       uNear: { value: camera.near },
       uFar: { value: camera.far },
@@ -209,8 +211,11 @@ export default function GlassScene({ isDark = false }) {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.getDrawingBufferSize(bufferSize);
-      target.setSize(bufferSize.x, bufferSize.y);
       uniforms.uResolution.value.copy(bufferSize);
+      // the plant is only ever seen through frost, so half resolution is
+      // plenty — a quarter of the pixels to draw and to blur
+      target.setSize(Math.ceil(bufferSize.x / 2), Math.ceil(bufferSize.y / 2));
+      uniforms.uSceneHeight.value = target.height;
     };
     resize();
     const resizeObserver = new ResizeObserver(resize);
@@ -257,6 +262,7 @@ export default function GlassScene({ isDark = false }) {
     const dummy = new THREE.Object3D();
     const speed = prefersReduced ? 0.15 : 1;
     let t = 0;
+    let frame = 0;
     let last = performance.now();
     let frameId;
 
@@ -342,6 +348,8 @@ export default function GlassScene({ isDark = false }) {
       }
       leaves.instanceMatrix.needsUpdate = true;
 
+      // the leaves move slowly; their shadows don't need redrawing each frame
+      if (frame++ % 3 === 0) renderer.shadowMap.needsUpdate = true;
       renderer.setRenderTarget(target);
       renderer.render(plant, camera);
       renderer.setRenderTarget(null);
