@@ -57,6 +57,24 @@ export const glassFragment = /* glsl */ `
   const float WIRE_HALF_WIDTH = 0.0035;
   const float WIRE_DEPTH = 0.06;
 
+  // how heavily frosted this spot of the pane is (set once per pixel)
+  float frost;
+
+  // smooth random patches across the pane, 0..1
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float patches(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+
   // distance from the camera to whatever is behind the glass at this pixel
   float sceneDepth(vec2 uv) {
     return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar);
@@ -67,12 +85,16 @@ export const glassFragment = /* glsl */ `
   // small minimum so even a touching leaf is softened.
   float blurRadius(float z) {
     float behind = max(z - vViewZ, 0.0);
-    return min((uScatter * behind + 0.008) / (2.0 * uTanHalfFov * z), 0.11);
+    return min((uScatter * frost * behind + 0.008) / (2.0 * uTanHalfFov * z), 0.11);
   }
 
   void main() {
     float aspect = uResolution.x / uResolution.y;
     vec2 screenUv = gl_FragCoord.xy / uResolution;
+    // no pane is frosted evenly: some patches are a little clearer, some
+    // milkier
+    float uneven = patches(vWorldPos.xy * 0.55) * 0.65 + patches(vWorldPos.xy * 1.7) * 0.35;
+    frost = mix(0.6, 1.45, uneven);
     vec2 bump = texture2D(tBump, vUv * uBumpRepeat).xy * 2.0 - 1.0;
     // a fine frost grain riding on the pebbles (the same texture, much
     // smaller): it roughens the surface for light, not the view through it
@@ -112,7 +134,8 @@ export const glassFragment = /* glsl */ `
     // a little milkiness, and each pebble is a tiny lens: brighter on the
     // side facing the sky, darker underneath — the relief you see even
     // where there's nothing but flat light behind the pane
-    col = mix(col, uFrostTint, 0.07);
+    col = mix(col, uFrostTint, 0.03 + 0.08 * uneven);
+    col *= vec3(0.94, 0.985, 0.955); // the faint green of glass seen through its thickness
     col *= 1.0 + dot(surface, vec2(0.3, 0.7));
 
     // 3. the surface: glints, sky reflection, wire
