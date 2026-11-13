@@ -189,6 +189,8 @@ export default function GlassScene({ isDark = false }) {
       uSunColor: { value: new THREE.Color() },
       uSkyColor: { value: new THREE.Color() },
       uWireColor: { value: new THREE.Color() },
+      uFogColor: { value: new THREE.Color() },
+      uFog: { value: 0 },
     };
     const glass = new THREE.Mesh(
       new THREE.PlaneGeometry(GLASS_W, GLASS_H),
@@ -237,6 +239,14 @@ export default function GlassScene({ isDark = false }) {
     };
     window.addEventListener("pointermove", onPointerMove);
 
+    // how far the hero has scrolled away, 0..1 — fogs the pane over
+    let scrolled = 0;
+    const onScroll = () => {
+      scrolled = Math.min(window.scrollY / mount.clientHeight, 1);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+
     // ------------------------------------------------------------------
     // Day / night: `night` eases toward 0 or 1 and every themed value
     // lerps on it, so toggling the theme fades rather than snaps.
@@ -254,6 +264,7 @@ export default function GlassScene({ isDark = false }) {
       frost: pair([0.8, 0.84, 0.76], [0.03, 0.045, 0.07]),
       sky: pair([0.85, 0.92, 1], [0.07, 0.1, 0.18]),
       wire: pair([0.8, 0.84, 0.78], [0.08, 0.1, 0.13]),
+      page: pair([1.5, 1.36, 1.1], [0.014, 0.012, 0.01]),
     };
     let night = isDarkRef.current ? 1 : 0;
 
@@ -304,6 +315,8 @@ export default function GlassScene({ isDark = false }) {
       themed(uniforms.uFrostTint.value, "frost");
       themed(uniforms.uSkyColor.value, "sky");
       themed(uniforms.uWireColor.value, "wire");
+      themed(uniforms.uFogColor.value, "page");
+      uniforms.uFog.value = THREE.MathUtils.smoothstep(scrolled, 0.1, 0.9);
       themed(uniforms.uLightColor.value, "light");
       themed(uniforms.uSunColor.value, "sun").multiplyScalar(mix(1, 0.5));
       hemi.intensity = mix(0.5, 0.15);
@@ -379,6 +392,7 @@ export default function GlassScene({ isDark = false }) {
     return () => {
       cancelAnimationFrame(frameId);
       window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("scroll", onScroll);
       resizeObserver.disconnect();
       viewObserver.disconnect();
 

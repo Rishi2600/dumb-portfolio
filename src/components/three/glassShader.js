@@ -48,6 +48,8 @@ export const glassFragment = /* glsl */ `
   uniform vec3 uSunColor;
   uniform vec3 uSkyColor;
   uniform vec3 uWireColor;
+  uniform vec3 uFogColor;
+  uniform float uFog;
 
   varying vec2 vUv;
   varying vec3 vWorldPos;
@@ -95,7 +97,7 @@ export const glassFragment = /* glsl */ `
     // no pane is frosted evenly: some patches are a little clearer, some
     // milkier
     float uneven = patches(vWorldPos.xy * 0.55) * 0.65 + patches(vWorldPos.xy * 1.7) * 0.35;
-    frost = mix(0.6, 1.45, uneven);
+    frost = mix(0.6, 1.45, uneven) * (1.0 + uFog * 5.0);
     vec2 bump = texture2D(tBump, vUv * uBumpRepeat).xy * 2.0 - 1.0;
     // a fine frost grain riding on the pebbles (the same texture, much
     // smaller): it roughens the surface for light, not the view through it
@@ -137,6 +139,8 @@ export const glassFragment = /* glsl */ `
     // where there's nothing but flat light behind the pane
     col = mix(col, uFrostTint, 0.03 + 0.08 * uneven);
     col *= vec3(0.94, 0.985, 0.955); // the faint green of glass seen through its thickness
+    // scrolling away fogs the pane over until nothing shows through
+    col = mix(col, uFogColor, uFog);
     col *= 1.0 + dot(surface, vec2(0.3, 0.7));
 
     // 3. the surface: glints, sky reflection, wire
