@@ -314,7 +314,7 @@ export default function GlassScene({ isDark = false }) {
           Math.sin(t * leaf.speed + leaf.phase + leaf.x * 0.3) * gust;
         dummy.position.set(leaf.x, leaf.y, leaf.z);
         dummy.rotation.set(leaf.rx + sway * 0.6, leaf.ry, leaf.rz + sway);
-        dummy.scale.setScalar(leaf.scale);
+        dummy.scale.set(leaf.scale * leaf.width, leaf.scale, leaf.scale);
         dummy.updateMatrix();
         leaves.setMatrixAt(i, dummy.matrix);
       }
@@ -373,17 +373,20 @@ function makePlantLayout() {
   const leafData = [];
   const vines = [];
 
-  const addVine = ({ x, y, z, rise, steps, drift }) => {
+  const addVine = ({ x, y, z, rise, steps, drift, minX = -Infinity }) => {
     const points = [new THREE.Vector3(x, y - rise, z)];
     const wave = rand(0, Math.PI * 2);
     for (let s = 0; s < steps; s++) {
-      x += drift + rand(-0.12, 0.12);
+      x = Math.max(x + drift + rand(-0.12, 0.12), minX);
       y += rise * rand(0.22, 0.32);
       const pz = Math.min(z + Math.sin(s * 0.45 + wave) * 0.22, -0.08);
       points.push(new THREE.Vector3(x, y, pz));
 
       const side = s % 2 ? 1 : -1;
-      const yellow = Math.random() < 0.07;
+      // 0 at the root, 1 at the growing tip: leaves start small, pale and
+      // fresh, and get bigger and darker with age; old ones may yellow
+      const youth = Math.pow(s / steps, 1.4);
+      const yellow = Math.random() < 0.12 * (1 - youth);
       leafData.push({
         x,
         y,
@@ -392,13 +395,14 @@ function makePlantLayout() {
         ry: rand(-0.6, 0.6),
         // rising vines hold leaves up and out; hanging ones let them droop
         rz: (rise > 0 ? 0 : Math.PI) + side * rand(0.5, 1.3),
-        scale: rand(0.4, 0.72),
+        scale: (0.78 - youth * 0.5) * rand(0.85, 1.15),
+        width: rand(0.8, 1.15),
         speed: rand(0.8, 1.7),
         phase: rand(0, Math.PI * 2),
         color: new THREE.Color().setHSL(
-          yellow ? rand(0.14, 0.17) : rand(0.24, 0.31),
-          yellow ? 0.6 : rand(0.45, 0.7),
-          yellow ? 0.5 : rand(0.26, 0.42),
+          yellow ? rand(0.14, 0.17) : 0.31 - youth * 0.07 + rand(-0.015, 0.015),
+          yellow ? 0.6 : rand(0.5, 0.7),
+          yellow ? 0.5 : 0.25 + youth * 0.17 + rand(-0.03, 0.03),
         ),
       });
     }
@@ -413,14 +417,15 @@ function makePlantLayout() {
       z: -(0.1 + Math.pow(Math.random(), 2.4) * 4.7),
       rise: 1,
       steps: rand(16, 34),
-      drift: rand(-0.08, 0.04),
+      drift: rand(-0.05, 0.05),
+      minX: 1.7, // keep the mass off the hero text
     });
   }
   // (kept between the logo and the nav links, and short enough to stop
   // above the hero text)
   for (let v = 0; v < 4; v++) {
     addVine({
-      x: rand(-2.1, -1.4),
+      x: rand(-1.95, -1.5),
       y: 3,
       z: -rand(0.1, 0.5),
       rise: -1,
