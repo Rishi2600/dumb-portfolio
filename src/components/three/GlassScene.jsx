@@ -87,23 +87,41 @@ export default function GlassScene({ isDark = false }) {
     backdrop.position.z = -7;
     plant.add(backdrop);
 
-    // the sun (or moon) low behind the leaves; over-bright, so the frost
-    // spreads it into a glare with the leaves silhouetted against it
+    // The sun, low behind the leaves and left of centre: over-bright, so
+    // the frost spreads it into a glare with leaves silhouetted against it.
+    // The moon is up on the right behind the foliage, clear of the hero
+    // text: a small hot core with a long faint halo. Each fades out when
+    // it isn't its time of day.
+    const makeGlow = (texture, x, y) => {
+      const glow = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: texture,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          fog: false,
+        }),
+      );
+      glow.position.set(x, y, -6.8);
+      glow.scale.setScalar(9);
+      plant.add(glow);
+      return glow;
+    };
     const glowTex = makeRadialTexture(128, [
       [0, "rgba(255,255,255,1)"],
       [0.25, "rgba(255,255,255,0.7)"],
       [0.6, "rgba(255,255,255,0.15)"],
       [1, "rgba(255,255,255,0)"],
     ]);
-    const sunGlow = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: glowTex,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        fog: false,
-      }),
-    );
-    plant.add(sunGlow);
+    const moonTex = makeRadialTexture(256, [
+      [0, "rgba(255,255,255,1)"],
+      [0.05, "rgba(255,255,255,0.85)"],
+      [0.12, "rgba(255,255,255,0.3)"],
+      [0.3, "rgba(255,255,255,0.08)"],
+      [0.6, "rgba(255,255,255,0.02)"],
+      [1, "rgba(255,255,255,0)"],
+    ]);
+    const sunGlow = makeGlow(glowTex, -0.3, 1.2);
+    const moonGlow = makeGlow(moonTex, 4.5, 2.3);
 
     const { leafData, vines } = makePlantLayout();
 
@@ -261,7 +279,8 @@ export default function GlassScene({ isDark = false }) {
     });
     const THEME = {
       backdrop: pair([0.95, 0.95, 0.92], [0.06, 0.09, 0.14]),
-      glow: pair([2.6, 2.4, 2.0], [0.55, 0.7, 1.3]),
+      glow: pair([2.6, 2.4, 2.0], [0, 0, 0]),
+      moon: pair([0, 0, 0], [1.7, 2.1, 3.4]),
       fog: pair([0.016, 0.036, 0.01], [0.003, 0.008, 0.008]),
       sun: pair([1, 0.87, 0.64], [0.4, 0.54, 1]),
       light: pair([1, 0.94, 0.82], [0.6, 0.74, 1]),
@@ -313,6 +332,7 @@ export default function GlassScene({ isDark = false }) {
 
       themed(backdrop.material.color, "backdrop");
       themed(sunGlow.material.color, "glow");
+      themed(moonGlow.material.color, "moon");
       themed(plant.fog.color, "fog");
       themed(sun.color, "sun");
       themed(cursorLight.color, "light");
@@ -326,10 +346,6 @@ export default function GlassScene({ isDark = false }) {
       hemi.intensity = mix(0.5, 0.15);
       sun.intensity = mix(3.6, 0.9);
       cursorLight.intensity = mix(7, 4);
-      sunGlow.scale.setScalar(mix(9, 5));
-      // the sun sits left of centre; the moon rises up on the right, behind
-      // the foliage and clear of the hero text
-      sunGlow.position.set(mix(-0.3, 4.5), mix(1.2, 2.3), -6.8);
 
       // camera leans toward the cursor, with a slow idle drift on top
       look.x += (pointer.x - look.x) * 0.06;
@@ -413,7 +429,7 @@ export default function GlassScene({ isDark = false }) {
           if (obj.material) obj.material.dispose();
         }),
       );
-      [backdropTex, glowTex, leafTex, bumpTex, rain.texture].forEach((tex) =>
+      [backdropTex, glowTex, moonTex, leafTex, bumpTex, rain.texture].forEach((tex) =>
         tex.dispose(),
       );
       target.depthTexture.dispose();
