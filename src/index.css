@@ -81,15 +81,32 @@ h1, h2, h3, p, a, span, div,
     radial-gradient(45% 40% at 10% 90%, color-mix(in srgb, var(--sage) 14%, transparent), transparent 70%),
     linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 45%, var(--bg) 100%);
 }
-/* The hero's glass pane (GlassScene): fills the hero and dissolves into
-   the page at its bottom edge. */
+/* The hero's glass pane (GlassScene). It ends at a window sill; the page
+   below is the wall under the window. */
 .hero-glass {
   position: absolute;
-  inset: 0;
-  mask-image: linear-gradient(to bottom, #000 84%, transparent);
+  inset: 0 0 22px 0; /* stops behind the sill */
 }
 .hero-glass canvas {
   display: block;
+}
+/* Top to bottom: the seam where glass meets frame, the top of the ledge
+   catching the light, its front lip, then the shadow it casts on the wall. */
+.hero-sill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0 1px,
+    color-mix(in srgb, var(--surface) 90%, white) 1px 12px,
+    color-mix(in srgb, var(--surface) 84%, black) 12px 18px,
+    var(--shadow) 18px,
+    transparent 40px
+  );
 }
 
 /* ----------------------------------------------------------------------
